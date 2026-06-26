@@ -85,6 +85,58 @@
     <CopilotSkipCliDownload>true</CopilotSkipCliDownload>
   </PropertyGroup>
 
+  <!--
+    Issue #678 — make the WinUI app projects actually BUILD on a long-path dev box
+    (e.g. an ARM64 machine whose worktree lives under a long, OneDrive-synced path).
+
+    Root cause is MAX_PATH (260), not the OneDrive reparse point per se. The WinUI
+    markup compiler (XamlCompiler.exe) and the PRI resource indexer (MakePri.exe)
+    shipped in Windows App SDK 2.0.x are x86 / .NET Framework 4.7.2 Win32 tools with
+    no long-path manifest, and the package ships no ARM64/net6.0 build of them
+    (tools\arm64, tools\x64, tools\x86 contain only GenXbf.dll). `dotnet build`
+    always invokes them out-of-process (UseXamlCompilerExecutable defaults true on
+    MSBuildRuntimeType 'Core'), and on an ARM64 host they run under x86 emulation.
+    When the repository's path prefix is long, the per-project obj/bin OUTPUT paths
+    these tools read and write exceed MAX_PATH and they fail
+    (XamlCompiler -> MSB3073; MakePri -> APPX0002 / PRI180 / PRI210). The inputs that
+    stay under MAX_PATH (App.xaml etc.) are read fine — only the long obj/bin outputs
+    break, so relocating obj/bin to a short path lets the SAME emulated tools succeed
+    and the apps compile to real binaries. (Proven: building a perf-bench/stress-perf
+    WinUI app with obj/bin redirected to a short path produces the .dll AND .exe;
+    `UseXamlCompilerExecutable=false` in-proc is unsupported on Core (MSB4216/MSB4027),
+    and `-p:Platform=x64` does not help because the same emulated tool still writes the
+    same long output paths.)
+
+    Fix: when building on an ARM64 host AND this project's directory is long enough
+    that its obj/bin would risk crossing MAX_PATH, redirect obj/bin to a short,
+    per-project, machine-local path under %LOCALAPPDATA% (keyed by a stable hash of the
+    project directory so sibling worktrees never collide). Scoped to non-src projects:
+    the shipping library under src\ is never relocated. The gate keys off the build
+    *host* architecture (OSArchitecture, overridable via _ReactorBuildHostArch) — not
+    the project Platform — so it is byte-for-byte inert on x64 (CI and dev boxes) and
+    on short-path checkouts, where the default in-tree obj/bin are used unchanged.
+  -->
+  <PropertyGroup>
+    <_ReactorSrcPrefix>$(MSBuildThisFileDirectory)src\</_ReactorSrcPrefix>
+    <_ReactorBuildHostArch Condition="'$(_ReactorBuildHostArch)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)</_ReactorBuildHostArch>
+    <_ReactorIsSrcProject>false</_ReactorIsSrcProject>
+    <_ReactorIsSrcProject Condition="$(MSBuildProjectFullPath.StartsWith('$(_ReactorSrcPrefix)'))">true</_ReactorIsSrcProject>
+    <_ReactorShortOutputEligible Condition="'$(_ReactorBuildHostArch)' == 'Arm64' and $(MSBuildProjectDirectory.Length) &gt; 145 and '$(_ReactorIsSrcProject)' == 'false'">true</_ReactorShortOutputEligible>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(_ReactorShortOutputEligible)' == 'true'">
+    <_ReactorShortOutputRoot>$(LOCALAPPDATA)\ReactorBuild\$(MSBuildProjectName)-$([MSBuild]::StableStringHash($(MSBuildProjectDirectory)))</_ReactorShortOutputRoot>
+    <BaseIntermediateOutputPath>$(_ReactorShortOutputRoot)\obj\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(_ReactorShortOutputRoot)\bin\</BaseOutputPath>
+    <!--
+      With obj/bin moved out of the tree the SDK no longer auto-excludes the
+      conventional in-tree obj/bin from the default source globs, so exclude them
+      explicitly. Otherwise a developer's pre-existing in-tree obj (from a build before
+      this fix) would be picked up and double-compiled (CS0579 duplicate attributes).
+    -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)\obj\**;$(MSBuildProjectDirectory)\bin\**</DefaultItemExcludes>
+  </PropertyGroup>
+
   <Import Project="$(MSBuildThisFileDirectory)src\Reactor\build\Reactor.targets"
           Condition="Exists('$(MSBuildThisFileDirectory)src\Reactor\build\Reactor.targets')" />
 
