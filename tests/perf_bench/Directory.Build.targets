@@ -1,0 +1,66 @@
+<Project>
+
+  <!--
+    Re-import the repo-root Directory.Build.targets. Adding this file shadows the
+    root one in MSBuild's directory walk (MSBuild imports only the *first*
+    Directory.Build.targets found walking up from the project), so import it
+    explicitly to keep the root AOT-analysis settings for the perf benches.
+  -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.targets', '$(MSBuildThisFileDirectory)..\'))" />
+
+  <!--
+    Issue #678 — ARM64 dev-box build of the perf-bench WinUI apps.
+
+    Every perf_bench project except the PerfBench.Shared library is a WinUI
+    application executable (OutputType=WinExe, UseWinUI=true). On an ARM64 build
+    *host* their WinUI build chain relies on native tooling that has no
+    ARM64-native build in Windows App SDK 2.0.x and so runs under x86 emulation,
+    where it cannot read a OneDrive "cloud files" reparse-point working tree:
+
+      * The *.Bound / *.Direct apps (App.xaml) drive XamlCompiler.exe — the XAML
+        markup compiler shipped in Microsoft.WindowsAppSDK.WinUI, an x86 .NET
+        Framework 4.7.2 executable (the package ships no ARM64/net6.0 build of it;
+        tools\arm64, tools\x64 and tools\x86 contain only GenXbf.dll), which
+        `dotnet build` always invokes out-of-process because
+        UseXamlCompilerExecutable defaults to true when MSBuildRuntimeType is
+        'Core'. Emulated, it reports `Input JSON file ... doesn't exist!` and
+        exits 1 -> MSB3073.
+      * The *.Reactor / ControlModel apps reach the PRI / MakePri resource
+        indexer, which fails in the WinAppSdkExpandPriContent task with
+        `... .pri.xml does not exist` (APPX0002 / PRI180).
+
+    Both are the same class of failure: an x86/native WinUI build tool that
+    cannot service this ARM64 + OneDrive working tree. (Relocating a project off
+    the reparse path makes the identical XAML compiler succeed; the in-proc
+    net6.0 XAML task is unsupported on Core (MSB4216/MSB4027); and forcing
+    -p:Platform=x64 does not help because the same emulated tooling still runs
+    against the same OneDrive paths — so there is no in-tree toolchain fix in
+    Windows App SDK 2.0.x.)
+
+    These are non-shipping micro-benchmark harness apps. CI and the /perf gate
+    build them on x64, where this tooling runs natively and none of this
+    triggers. So on an ARM64 *host* we skip building the perf-bench WinUI apps so
+    `dotnet build Reactor.slnx -c Release` stays green on ARM64 dev boxes. x64
+    builds are completely unaffected — the gate keys off the build host
+    architecture, not the project Platform. The PerfBench.Shared library is not a
+    WinUI app and keeps building on every host.
+
+    PerfBenchHostArchitecture is overridable so the x64 code path can be forced
+    on any host (e.g. -p:PerfBenchHostArchitecture=X64).
+  -->
+  <PropertyGroup>
+    <PerfBenchHostArchitecture Condition="'$(PerfBenchHostArchitecture)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)</PerfBenchHostArchitecture>
+    <PerfBenchSkipWinUiAppOnArm64 Condition="'$(PerfBenchSkipWinUiAppOnArm64)' == '' and '$(PerfBenchHostArchitecture)' == 'Arm64' and '$(OutputType)' == 'WinExe' and '$(UseWinUI)' == 'true'">true</PerfBenchSkipWinUiAppOnArm64>
+  </PropertyGroup>
+
+  <!--
+    Register the no-op Build override only for the projects we actually skip.
+    Defining a `Build` target unconditionally here would shadow the SDK's Build
+    target for *every* perf_bench project (a conditioned-out target still wins
+    the name and would simply do nothing), which would break PerfBench.Shared.
+    A conditional import keeps the library on the SDK's real Build target.
+  -->
+  <Import Project="$(MSBuildThisFileDirectory)build\SkipWinUiAppBuild.Arm64.targets"
+          Condition="'$(PerfBenchSkipWinUiAppOnArm64)' == 'true'" />
+
+</Project>
