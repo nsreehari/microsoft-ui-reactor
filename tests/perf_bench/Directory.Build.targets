@@ -46,10 +46,16 @@
     WinUI app and keeps building on every host.
 
     PerfBenchHostArchitecture is overridable so the x64 code path can be forced
-    on any host (e.g. -p:PerfBenchHostArchitecture=X64).
+    on any host (e.g. -p:PerfBenchHostArchitecture=X64). It defaults to
+    OSArchitecture (the machine/OS architecture) rather than ProcessArchitecture
+    on purpose: the failure is a property of the ARM64 *host*, so it must still
+    be detected when the build runs under an x64 (emulated) .NET SDK, where
+    ProcessArchitecture would report 'X64'. OSArchitecture reports 'Arm64' on an
+    ARM64 box regardless of the SDK bitness, and reports 'X64' on the x64 CI
+    runner so the gate stays off there.
   -->
   <PropertyGroup>
-    <PerfBenchHostArchitecture Condition="'$(PerfBenchHostArchitecture)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)</PerfBenchHostArchitecture>
+    <PerfBenchHostArchitecture Condition="'$(PerfBenchHostArchitecture)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)</PerfBenchHostArchitecture>
     <PerfBenchSkipWinUiAppOnArm64 Condition="'$(PerfBenchSkipWinUiAppOnArm64)' == '' and '$(PerfBenchHostArchitecture)' == 'Arm64' and '$(OutputType)' == 'WinExe' and '$(UseWinUI)' == 'true'">true</PerfBenchSkipWinUiAppOnArm64>
   </PropertyGroup>
 
