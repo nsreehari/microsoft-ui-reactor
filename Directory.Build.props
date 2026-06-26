@@ -120,12 +120,12 @@
     <_ReactorSrcPrefix>$(MSBuildThisFileDirectory)src\</_ReactorSrcPrefix>
     <_ReactorBuildHostArch Condition="'$(_ReactorBuildHostArch)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)</_ReactorBuildHostArch>
     <_ReactorIsSrcProject>false</_ReactorIsSrcProject>
-    <_ReactorIsSrcProject Condition="$(MSBuildProjectFullPath.StartsWith('$(_ReactorSrcPrefix)'))">true</_ReactorIsSrcProject>
+    <_ReactorIsSrcProject Condition="$(MSBuildProjectFullPath.StartsWith('$(_ReactorSrcPrefix)', System.StringComparison.OrdinalIgnoreCase))">true</_ReactorIsSrcProject>
     <_ReactorShortOutputEligible Condition="'$(_ReactorBuildHostArch)' == 'Arm64' and $(MSBuildProjectDirectory.Length) &gt; 145 and '$(_ReactorIsSrcProject)' == 'false'">true</_ReactorShortOutputEligible>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(_ReactorShortOutputEligible)' == 'true'">
-    <_ReactorShortOutputRoot>$(LOCALAPPDATA)\ReactorBuild\$(MSBuildProjectName)-$([MSBuild]::StableStringHash($(MSBuildProjectDirectory)))</_ReactorShortOutputRoot>
+    <_ReactorShortOutputRoot>$(LOCALAPPDATA)\ReactorBuild\$(MSBuildProjectName)-$([MSBuild]::StableStringHash('$(MSBuildProjectDirectory)'))</_ReactorShortOutputRoot>
     <BaseIntermediateOutputPath>$(_ReactorShortOutputRoot)\obj\</BaseIntermediateOutputPath>
     <BaseOutputPath>$(_ReactorShortOutputRoot)\bin\</BaseOutputPath>
     <!--
