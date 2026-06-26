@@ -111,10 +111,12 @@
     that its obj/bin would risk crossing MAX_PATH, redirect obj/bin to a short,
     per-project, machine-local path under %LOCALAPPDATA% (keyed by a stable hash of the
     project directory so sibling worktrees never collide). Scoped to non-src projects:
-    the shipping library under src\ is never relocated. The gate keys off the build
-    *host* architecture (OSArchitecture, overridable via _ReactorBuildHostArch) — not
-    the project Platform — so it is byte-for-byte inert on x64 (CI and dev boxes) and
-    on short-path checkouts, where the default in-tree obj/bin are used unchanged.
+    the shipping library under src\ is never relocated. Because the failing tools are
+    Windows-only, the gate also requires a Windows host with %LOCALAPPDATA% set, and
+    keys off the build *host* architecture (OSArchitecture, overridable via
+    _ReactorBuildHostArch) — not the project Platform — so it is byte-for-byte inert on
+    x64 (CI and dev boxes), on non-Windows hosts, and on short-path checkouts, where
+    the default in-tree obj/bin are used unchanged.
   -->
   <PropertyGroup>
     <_ReactorSrcPrefix>$(MSBuildThisFileDirectory)src\</_ReactorSrcPrefix>
@@ -131,7 +133,7 @@
       paths are well under 100). If a future SDK output layout grows substantially
       deeper, lower this threshold accordingly.
     -->
-    <_ReactorShortOutputEligible Condition="'$(_ReactorBuildHostArch)' == 'Arm64' and $(MSBuildProjectDirectory.Length) &gt; 145 and '$(_ReactorIsSrcProject)' == 'false'">true</_ReactorShortOutputEligible>
+    <_ReactorShortOutputEligible Condition="'$(OS)' == 'Windows_NT' and '$(_ReactorBuildHostArch)' == 'Arm64' and '$(LOCALAPPDATA)' != '' and $(MSBuildProjectDirectory.Length) &gt; 145 and '$(_ReactorIsSrcProject)' == 'false'">true</_ReactorShortOutputEligible>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(_ReactorShortOutputEligible)' == 'true'">
