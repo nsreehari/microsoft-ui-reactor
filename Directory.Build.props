@@ -121,6 +121,16 @@
     <_ReactorBuildHostArch Condition="'$(_ReactorBuildHostArch)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)</_ReactorBuildHostArch>
     <_ReactorIsSrcProject>false</_ReactorIsSrcProject>
     <_ReactorIsSrcProject Condition="$(MSBuildProjectFullPath.StartsWith('$(_ReactorSrcPrefix)', System.StringComparison.OrdinalIgnoreCase))">true</_ReactorIsSrcProject>
+    <!--
+      The 145 length cutoff is empirically chosen. MAX_PATH is 260; below each
+      project directory the SDK/WinUI toolchain appends ~100-115 characters of
+      output subtree (e.g. obj\<Platform>\<Config>\<TFM>\intermediatexaml\<Project>.<ext>),
+      so a project directory longer than ~145 risks pushing those outputs past 260.
+      It is deliberately conservative: it activates for the deep WinUI app output
+      trees on long-path hosts while staying inert on normal/CI checkouts (whose
+      paths are well under 100). If a future SDK output layout grows substantially
+      deeper, lower this threshold accordingly.
+    -->
     <_ReactorShortOutputEligible Condition="'$(_ReactorBuildHostArch)' == 'Arm64' and $(MSBuildProjectDirectory.Length) &gt; 145 and '$(_ReactorIsSrcProject)' == 'false'">true</_ReactorShortOutputEligible>
   </PropertyGroup>
 
